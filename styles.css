@@ -1,0 +1,50 @@
+.visual-card-canvas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.visual-card-canvas-button {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* On Canvas mobile, Obsidian presents this action as a floating blue button. */
+.visual-card-handwriting-action {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16) !important;
+}
+
+.visual-card-canvas-header-action {
+  cursor: pointer;
+}
+
+/* Canvasノード内のプロパティ（フロントマター）を非表示にする */
+.canvas-node .metadata-container,
+.canvas-node .metadata-properties,
+.canvas-node-content .metadata-container,
+.canvas-node-content .metadata-properties {
+  display: none !important;
+}
+
+.visual-card-canvas-menu-item {
+  cursor: pointer;
+}
+
+.canvas-menu button.visual-card-canvas-menu-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--size-4-1, 4px) var(--size-4-2, 8px);
+  margin: 0;
+  border-radius: var(--radius-s, 4px);
+  background: transparent;
+  border: none;
+}
+
+
