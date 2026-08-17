@@ -1,7 +1,7 @@
 {
   "id": "visual-card",
   "name": "Visual Card",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minAppVersion": "1.5.7",
   "description": "Creates paired Markdown and Excalidraw visual knowledge cards.",
   "author": "Haruna",
