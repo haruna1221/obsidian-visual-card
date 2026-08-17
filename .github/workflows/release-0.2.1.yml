@@ -1,0 +1,41 @@
+name: Release 0.2.1
+
+on:
+  push:
+    branches:
+      - "release-0.2.1"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Create Release 0.2.1
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "0.2.1"
+          target_commitish: "main"
+          name: "0.2.1"
+          files: |
+            main.js
+            manifest.json
+            styles.css
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
