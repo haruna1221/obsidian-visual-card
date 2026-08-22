@@ -170,7 +170,7 @@ export default class VisualCardPlugin extends Plugin {
     });
     this.addCommand({
       id: "duplicate-canvas-card",
-      name: "Canvas: 選択カードを複製",
+      name: "Canvas: 選択カードをもう1つ配置",
       icon: "copy-plus",
       callback: async () => this.duplicateSelectedCanvasCards(),
     });
@@ -427,10 +427,10 @@ export default class VisualCardPlugin extends Plugin {
       void this.openCanvasCardText();
     });
 
-    // 4. カード複製ボタン
+    // 4. 同じカードをもう1つ配置するボタン
     const copyBtn = menuEl.createEl("button", { cls: ["clickable-icon", "canvas-menu-item", "visual-card-canvas-menu-item"] });
     setIcon(copyBtn, "copy-plus");
-    setTooltip(copyBtn, "Visual Card: カードを複製");
+    setTooltip(copyBtn, "Visual Card: 同じカードをもう1つ配置");
     copyBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -544,60 +544,31 @@ export default class VisualCardPlugin extends Plugin {
     if (!canvas) return;
 
     try {
-      const newNodes: CanvasNode[] = [];
-      const now = new Date();
-
-      for (let i = 0; i < targets.length; i++) {
-        const target = targets[i];
-        const parts = cardNameParts(target.card);
-        const title = parts ? parts.title : target.card.basename;
-
-        const targetDate = new Date(now.getTime() + i * 1000);
-        const names = await this.getAvailableNames(targetDate, title);
-
-        await this.ensureFolder(this.settings.cardFolder);
-        await this.ensureFolder(this.settings.drawingsFolder);
-
-        // Markdown ファイルの複製
-        const originalMd = await this.app.vault.read(target.card);
-        const updatedMd = originalMd.replace(
-          /^drawing:\s*.*$/m,
-          `drawing: ${names.drawingCandidatePath}`
-        );
-        await this.app.vault.create(names.markdownPath, updatedMd);
-
-        // Excalidraw 描画ファイルの複製
-        if (target.drawing) {
-          const originalDrawing = await this.app.vault.read(target.drawing);
-          await this.app.vault.create(names.drawingCandidatePath, originalDrawing);
-        } else {
-          await this.createDrawing(names.stem, this.settings.drawingsFolder, targetDate);
+      await this.app.vault.process(canvasFile, (content) => {
+        const parsed: unknown = JSON.parse(content);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Canvasの形式が不正です");
+        }
+        const data = parsed as Partial<CanvasData>;
+        if (data.nodes === undefined) data.nodes = [];
+        if (data.edges === undefined) data.edges = [];
+        if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+          throw new Error("Canvasの形式が不正です");
         }
 
-        // Canvasノードの位置設定（元のノードの少し右下）
-        const node = target.node;
-        const x = (node?.x ?? 0) + 40;
-        const y = (node?.y ?? 0) + 40;
-        const width = node?.width ?? 400;
-        const height = node?.height ?? 400;
-
-        const newFilePath = target.isDrawing ? names.drawingCandidatePath : names.markdownPath;
-
-        newNodes.push({
-          id: nextCanvasNodeId(canvas.data?.nodes ?? []),
-          type: "file",
-          file: newFilePath,
-          x,
-          y,
-          width,
-          height,
-        });
-      }
-
-      await this.app.vault.process(canvasFile, (content) => {
-        const data = JSON.parse(content) as Partial<CanvasData>;
-        if (!Array.isArray(data.nodes)) return content;
-        data.nodes.push(...newNodes);
+        for (const target of targets) {
+          const node = target.node;
+          const filePath = target.isDrawing ? target.drawingPath : target.card.path;
+          data.nodes.push({
+            id: nextCanvasNodeId(data.nodes),
+            type: "file",
+            file: filePath,
+            x: (node?.x ?? 0) + 40,
+            y: (node?.y ?? 0) + 40,
+            width: node?.width ?? 400,
+            height: node?.height ?? 300,
+          });
+        }
         return `${JSON.stringify(data, null, "\t")}\n`;
       });
 
