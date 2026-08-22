@@ -92,6 +92,7 @@ export default class VisualCardPlugin extends Plugin {
   private canvasMenuObserver: MutationObserver | null = null;
   private timestampTimers = new Map<string, number>();
   private timestampWrites = new Map<string, number>();
+  private cardContentSignatures = new Map<string, string>();
   settings: VisualCardSettings = { ...DEFAULT_SETTINGS };
 
   async onload(): Promise<void> {
@@ -180,7 +181,8 @@ export default class VisualCardPlugin extends Plugin {
       icon: "text-cursor-input",
       callback: async () => this.renameCanvasCard(),
     });
-    this.registerEvent(this.app.vault.on("modify", (file) => this.handleVaultModify(file)));
+    await this.cacheCardContentSignatures();
+    this.registerEvent(this.app.vault.on("modify", (file) => void this.handleVaultModify(file)));
 
     this.app.workspace.onLayoutReady(() => {
       this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
@@ -1004,10 +1006,11 @@ export default class VisualCardPlugin extends Plugin {
     return new Date();
   }
 
-  private handleVaultModify(file: TAbstractFile): void {
+  private async handleVaultModify(file: TAbstractFile): Promise<void> {
     if (!(file instanceof TFile) || this.isTimestampWrite(file.path)) return;
     const card = this.getCardForModifiedFile(file);
     if (!card) return;
+    if (file.path === card.path && !(await this.hasMeaningfulCardChange(card))) return;
 
     const existingTimer = this.timestampTimers.get(card.path);
     if (existingTimer) window.clearTimeout(existingTimer);
@@ -1027,6 +1030,38 @@ export default class VisualCardPlugin extends Plugin {
     }) ?? null;
   }
 
+  private async cacheCardContentSignatures(): Promise<void> {
+    const cards = this.app.vault.getMarkdownFiles().filter((file) => {
+      return this.app.metadataCache.getFileCache(file)?.frontmatter?.type === "visual-card";
+    });
+    await Promise.all(cards.map(async (card) => {
+      try {
+        this.cardContentSignatures.set(card.path, this.getCardContentSignature(await this.app.vault.read(card)));
+      } catch (error) {
+        console.warn(`Visual Card card signature cache failed: ${card.path}`, error);
+      }
+    }));
+  }
+
+  private async hasMeaningfulCardChange(card: TFile): Promise<boolean> {
+    try {
+      const signature = this.getCardContentSignature(await this.app.vault.read(card));
+      const previousSignature = this.cardContentSignatures.get(card.path);
+      this.cardContentSignatures.set(card.path, signature);
+      return previousSignature === undefined || previousSignature !== signature;
+    } catch (error) {
+      console.warn(`Visual Card card signature check failed: ${card.path}`, error);
+      return true;
+    }
+  }
+
+  private getCardContentSignature(content: string): string {
+    const frontmatter = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/);
+    if (!frontmatter) return content;
+    const normalizedFrontmatter = frontmatter[2].replace(/^updated:\s*.*(?:\r?\n|$)/m, "");
+    return `${frontmatter[1]}${normalizedFrontmatter}${frontmatter[3]}${content.slice(frontmatter[0].length)}`;
+  }
+
   private isTimestampWrite(path: string): boolean {
     const writtenAt = this.timestampWrites.get(path);
     if (!writtenAt) return false;
@@ -1041,6 +1076,7 @@ export default class VisualCardPlugin extends Plugin {
       await this.app.fileManager.processFrontMatter(card, (frontmatter) => {
         if (frontmatter.type === "visual-card") frontmatter.updated = formatLocalIso(new Date());
       });
+      this.cardContentSignatures.set(card.path, this.getCardContentSignature(await this.app.vault.read(card)));
     } catch (error) {
       console.error("Visual Card timestamp update failed", error);
     }
