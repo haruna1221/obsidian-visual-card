@@ -740,18 +740,24 @@ export default class VisualCardPlugin extends Plugin {
     const canvases = this.app.vault.getFiles()
       .filter((file) => file.extension === "canvas")
       .sort((a, b) => a.path.localeCompare(b.path));
-    if (canvases.length === 0) {
-      new Notice("Visual Card: 追加先のCanvasファイルが見つかりません。");
-      return;
-    }
 
-    const canvas = await promptForCanvas(this.app, canvases);
+    const canvas = await promptForCanvas(
+      this.app,
+      canvases,
+      canvases.length === 0 ? () => this.createCanvasForCard() : undefined,
+    );
     if (!canvas) return;
 
     let alreadyAdded = false;
     try {
       await this.app.vault.process(canvas, (content) => {
-        const data = JSON.parse(content) as Partial<CanvasData>;
+        const parsed: unknown = JSON.parse(content);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Canvasの形式が不正です");
+        }
+        const data = parsed as Partial<CanvasData>;
+        if (data.nodes === undefined) data.nodes = [];
+        if (data.edges === undefined) data.edges = [];
         if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
           throw new Error("Canvasの形式が不正です");
         }
@@ -781,6 +787,22 @@ export default class VisualCardPlugin extends Plugin {
     } catch (error) {
       console.error("Visual Card Canvas add failed", error);
       new Notice(`Visual Card: Canvasへ追加できませんでした: ${errorMessage(error)}`);
+    }
+  }
+
+  private async createCanvasForCard(): Promise<TFile | null> {
+    const path = this.getAvailableCanvasPath();
+    try {
+      const canvas = await this.app.vault.create(
+        path,
+        `${JSON.stringify({ nodes: [], edges: [] }, null, "\t")}\n`,
+      );
+      new Notice(`Visual Card: Canvasを作成しました: ${canvas.path}`);
+      return canvas;
+    } catch (error) {
+      console.error("Visual Card Canvas creation failed", error);
+      new Notice(`Visual Card: Canvasを作成できませんでした: ${errorMessage(error)}`);
+      return null;
     }
   }
 
@@ -964,6 +986,15 @@ export default class VisualCardPlugin extends Plugin {
       return;
     }
     if (!("children" in existing)) throw new Error(`${path} はフォルダではありません`);
+  }
+
+  private getAvailableCanvasPath(): string {
+    const baseName = "新規キャンバス";
+    for (let suffix = 1; ; suffix += 1) {
+      const name = suffix === 1 ? baseName : `${baseName} ${suffix}`;
+      const path = `${name}.canvas`;
+      if (!this.app.vault.getAbstractFileByPath(path)) return path;
+    }
   }
 
   private async createDrawing(stem: string, folder: string, date: Date): Promise<string> {
@@ -1240,20 +1271,38 @@ class CanvasPickerModal extends Modal {
   private settled = false;
   private resolver: (canvas: TFile | null) => void;
 
-  constructor(app: App, private canvases: TFile[], resolver: (canvas: TFile | null) => void) {
+  constructor(
+    app: App,
+    private canvases: TFile[],
+    resolver: (canvas: TFile | null) => void,
+    private onCreate: (() => Promise<TFile | null>) | undefined,
+  ) {
     super(app);
     this.resolver = resolver;
   }
 
   onOpen(): void {
     this.titleEl.setText("Canvasを選択");
-    this.contentEl.createEl("p", { text: "追加先または開くCanvasを選んでください。" });
-    const list = this.contentEl.createDiv({ cls: "visual-card-canvas-list" });
-    for (const canvas of this.canvases) {
-      const button = list.createEl("button", { text: canvas.path, cls: "visual-card-canvas-button" });
-      button.addEventListener("click", () => { this.resolve(canvas); this.close(); });
+    if (this.canvases.length > 0) {
+      this.contentEl.createEl("p", { text: "追加先または開くCanvasを選んでください。" });
+      const list = this.contentEl.createDiv({ cls: "visual-card-canvas-list" });
+      for (const canvas of this.canvases) {
+        const button = list.createEl("button", { text: canvas.path, cls: "visual-card-canvas-button" });
+        button.addEventListener("click", () => { this.resolve(canvas); this.close(); });
+      }
+    } else {
+      this.contentEl.createEl("p", { text: "追加先のCanvasがありません。新しく作成してください。" });
     }
     const actions = this.contentEl.createDiv({ cls: "modal-button-container" });
+    if (this.canvases.length === 0 && this.onCreate) {
+      const create = actions.createEl("button", { text: "新規キャンバスを作成", cls: "mod-cta" });
+      create.addEventListener("click", async () => {
+        create.disabled = true;
+        const canvas = await this.onCreate?.();
+        this.resolve(canvas ?? null);
+        this.close();
+      });
+    }
     const cancel = actions.createEl("button", { text: "キャンセル" });
     cancel.addEventListener("click", () => { this.resolve(null); this.close(); });
   }
@@ -1310,8 +1359,12 @@ function promptForRenamedTitle(app: App, initialTitle: string): Promise<string |
   return new Promise((resolve) => new RenameCardTitleModal(app, initialTitle, resolve).open());
 }
 
-function promptForCanvas(app: App, canvases: TFile[]): Promise<TFile | null> {
-  return new Promise((resolve) => new CanvasPickerModal(app, canvases, resolve).open());
+function promptForCanvas(
+  app: App,
+  canvases: TFile[],
+  onCreate?: () => Promise<TFile | null>,
+): Promise<TFile | null> {
+  return new Promise((resolve) => new CanvasPickerModal(app, canvases, resolve, onCreate).open());
 }
 
 function promptForCanvasCardSide(app: App, hasDrawing: boolean): Promise<CanvasCardSide | null> {

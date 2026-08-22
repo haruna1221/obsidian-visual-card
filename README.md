@@ -18,6 +18,8 @@ Visual Card creates a Markdown knowledge card and a paired Excalidraw drawing. T
 - Missing drawing detection and the `Visual Card: 欠損した手書き面を再作成` command
 - `Visual Card: 現在のカードをCanvasへ追加` lets the user choose the handwriting or text side, then adds it as a standard file node
 - `Visual Card: 現在の手書き面をCanvasへ追加` adds the paired Excalidraw file as a standard file node
+- Empty Canvas JSON is normalized with `nodes` and `edges` arrays before a card is added
+- If no Canvas file exists, the Canvas picker offers `新規キャンバスを作成` and continues adding the selected card to the new Canvas
 - Header actions provide handwriting/text switching, Canvas add/open shortcuts, and card renaming
 - `Visual Card: 現在のカード名を変更` renames both the Markdown card and its paired Excalidraw file after the fixed `YYMMDD-HHmm-` prefix, then updates the authoritative `drawing` frontmatter path
 - Settings for card folders, Frame style, date font/size, and the 4:3 Frame width
